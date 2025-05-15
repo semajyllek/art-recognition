@@ -14,7 +14,7 @@ def load_artwork_dataset():
     print("Loading WikiArt dataset...")
     
     # Always load the full dataset
-    df = pd.read_csv("hf://datasets/matrixglitch/wikiart-215k/train-00000-of-00001.csv")
+    df = pd.read_csv("hf://datasets/matrixglitch/wikiart-215k/metadata.csv")
     
     # Extract metadata directly - no configurable options
     df['artist'] = df['file_link'].apply(lambda x: Path(x).parts[-2].replace('-', ' '))
