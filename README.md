@@ -1,6 +1,6 @@
-# ArtRecognition: Deep Learning-Based Artwork Recognition System
+# art-recognition: Deep Learning-Based Artwork Recognition System
 
-ArtRecognition is a Python-based system that can identify artwork from photographs, similar to how TinEye works for general images. Using deep learning and similarity search techniques, it can recognize artwork even when photographed from different angles, with varying lighting conditions, or at different sizes.
+art-recognition is a Python-based system that can identify artwork from photographs, similar to how TinEye works for general images. Using deep learning and similarity search techniques, it can recognize artwork even when photographed from different angles, with varying lighting conditions, or at different sizes.
 
 ## Overview
 
@@ -52,7 +52,7 @@ Here's how the system works:
    - The FAISS index finds the most similar vectors (nearest neighbors)
    - Matching artworks are displayed with similarity scores
 
-## Using ArtRecognition in Google Colab
+## Using art-recognition in Google Colab
 
 ### Setting Up a Colab Notebook
 
@@ -78,11 +78,11 @@ os.makedirs(SAVE_DIR, exist_ok=True)
 print(f"Files will be saved to: {SAVE_DIR}")
 ```
 
-4. Import ArtRecognition (either as modules or by copying code):
+4. Import art-recognition (either as modules or by copying code):
 
 ```python
 # Option 1: Clone repository (if available on GitHub)
-!git clone https://github.com/yourusername/ArtRecognition.git
+!git clone https://github.com/semajyllek/art-recognition.git
 ```
 
 ### Basic Usage
@@ -90,10 +90,10 @@ print(f"Files will be saved to: {SAVE_DIR}")
 Once you have set up the environment, you can use the system as follows:
 
 ```python
-# Import from ArtRecognition
-from ArtRecognition import data_handling, feature_extraction, index_management
-from ArtRecognition import system_management, image_processing, visualization
-from ArtRecognition import incremental_training
+# Import from art-recognition
+from art-recognition import data_handling, feature_extraction, index_management
+from art-recognition import system_management, image_processing, visualization
+from art-recognition import incremental_training
 
 # Define paths
 SAVE_DIR = '/content/drive/MyDrive/artwork_recognition'
@@ -200,7 +200,7 @@ To maximize performance in GPU environments:
 1. **Initial Setup**:
    - Install dependencies
    - Mount Google Drive
-   - Import ArtRecognition modules
+   - Import art-recognition modules
 
 2. **First Training Run**:
    - Load WikiArt dataset
@@ -251,7 +251,7 @@ To maximize performance in GPU environments:
 ## Project Structure
 
 ```
-ArtRecognition/
+art-recognition/
 ├── data_handling.py        # Dataset loading and metadata extraction
 ├── feature_extraction.py   # Neural network feature extraction
 ├── index_management.py     # FAISS index operations
