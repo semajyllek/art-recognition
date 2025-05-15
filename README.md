@@ -19,19 +19,18 @@ The system creates "embeddings" (numerical representations) of artwork images us
 
 ## System Architecture
 
-### Architecture Overview
-
-The system is organized into several modules, each handling a specific aspect:
+The system is organized into several focused modules, each handling a specific aspect:
 
 1. **data_handling.py**: Loads and processes the WikiArt dataset, extracting metadata
-2. **feature_extraction.py**: Extracts visual features from images using neural networks
-3. **index_management.py**: Creates and manages FAISS indexes for similarity search
-4. **system_management.py**: Handles saving, loading, and maintaining system state
-5. **image_processing.py**: Processes images for feature extraction and display
-6. **visualization.py**: Visualizes search results and system status
-7. **incremental_training.py**: Enables adding artworks to the system incrementally
+2. **dataset.py**: Handles loading and preprocessing of artwork images
+3. **feature_extraction.py**: Extracts visual features from images using neural networks
+4. **index_management.py**: Creates and manages FAISS indexes for similarity search
+5. **system_management.py**: Handles saving, loading, and maintaining system state
+6. **image_processing.py**: Processes images for feature extraction and display
+7. **visualization.py**: Visualizes search results and system status
+8. **incremental_training.py**: Enables adding artworks to the system incrementally
 
-### Logic and Data Flow
+## Logic and Data Flow
 
 Here's how the system works:
 
@@ -54,6 +53,110 @@ Here's how the system works:
 
 ## Using art-recognition in Google Colab
 
+### Quick Start
+
+The simplest way to use art-recognition is with the main function:
+
+```python
+def run_artwork_recognition(save_dir='/content/drive/MyDrive/artwork_recognition'):
+    """
+    Main function to run the artwork recognition system.
+    Handles the entire workflow in a prescribed manner.
+    """
+    # Import required modules
+    import os
+    from google.colab import drive, files
+    
+    # Mount Google Drive for persistent storage
+    print("Mounting Google Drive...")
+    drive.mount('/content/drive')
+    os.makedirs(save_dir, exist_ok=True)
+    print(f"Files will be saved to: {save_dir}")
+    
+    # Import system modules
+    import data_handling
+    import feature_extraction
+    import incremental_training
+    import image_processing
+    import index_management
+    import visualization
+    import system_management
+    
+    # 1. Ask user what they want to do
+    print("\nWhat would you like to do?")
+    print("1. Add more artworks to the database")
+    print("2. Identify an artwork from an image")
+    print("3. Delete the existing system and start fresh")
+    
+    choice = input("Enter your choice (1/2/3): ")
+    
+    # 2. Handle user choice
+    if choice == '1':
+        # Add more artworks
+        print("\nAdding artworks to the database...")
+        
+        # Load dataset
+        df = data_handling.load_artwork_dataset()
+        
+        # Add artworks incrementally
+        incremental_training.add_more_artworks(df, save_dir)
+        
+    elif choice == '2':
+        # Identify artwork
+        print("\nIdentifying artwork from image...")
+        
+        # Check if system exists
+        if not system_management.system_exists(save_dir):
+            print("No artwork database found. Please add artworks first (option 1).")
+            return
+        
+        # Load system
+        index, embeddings, metadata = system_management.load_system(save_dir)
+        feature_extractor = feature_extraction.create_feature_extractor()
+        
+        # Upload image
+        print("Please upload an image of the artwork:")
+        uploaded = files.upload()
+        
+        if not uploaded:
+            print("No image uploaded.")
+            return
+            
+        # Process the single uploaded image
+        filename = next(iter(uploaded.keys()))
+        print(f"Processing image: {filename}")
+        
+        # Extract features
+        img_tensor = image_processing.process_image(filename)
+        query_vector = feature_extractor.extract_single_feature(img_tensor)
+        
+        # Search
+        results = index_management.search_artwork(query_vector, index, metadata, k=5)
+        
+        # Display results
+        visualization.display_search_results(filename, results)
+        visualization.print_search_results(results)
+        
+    elif choice == '3':
+        # Delete and start fresh
+        print("\nDeleting existing system...")
+        
+        confirm = input("Are you sure you want to delete the existing system? (y/n): ")
+        if confirm.lower() == 'y':
+            system_management.delete_system(save_dir)
+            print("System deleted. Run again to create a new one.")
+        else:
+            print("Deletion cancelled.")
+        
+    else:
+        print("Invalid choice. Please enter 1, 2, or 3.")
+    
+    print("\nOperation completed. Run this function again to perform another action.")
+
+# Example usage
+run_artwork_recognition()
+```
+
 ### Setting Up a Colab Notebook
 
 1. Create a new Google Colab notebook
@@ -64,157 +167,51 @@ Here's how the system works:
 !pip install -q datasets faiss-cpu torch torchvision tqdm matplotlib pillow requests
 ```
 
-3. Mount Google Drive for persistent storage:
-
-```python
-# Mount Google Drive
-from google.colab import drive
-drive.mount('/content/drive')
-
-# Create directory for saving system
-import os
-SAVE_DIR = '/content/drive/MyDrive/artwork_recognition'
-os.makedirs(SAVE_DIR, exist_ok=True)
-print(f"Files will be saved to: {SAVE_DIR}")
-```
-
-4. Import art-recognition (either as modules or by copying code):
-
-```python
-# Option 1: Clone repository (if available on GitHub)
-!git clone https://github.com/semajyllek/art-recognition.git
-```
-
-### Basic Usage
-
-Once you have set up the environment, you can use the system as follows:
-
-```python
-# Import from art-recognition
-from art-recognition import data_handling, feature_extraction, index_management
-from art-recognition import system_management, image_processing, visualization
-from art-recognition import incremental_training
-
-# Define paths
-SAVE_DIR = '/content/drive/MyDrive/artwork_recognition'
-
-# Load dataset
-df = data_handling.load_artwork_dataset(limit=None)  # Remove limit for full dataset
-```
-
-### Training the System
-
-For initial training with a small batch:
-
-```python
-# Create feature extractor
-feature_extractor = feature_extraction.create_feature_extractor()
-
-# Run incremental training (adds 1000 artworks)
-index, metadata = incremental_training.train_incrementally(
-    dataframe=df,
-    save_dir=SAVE_DIR,
-    feature_extractor=feature_extractor,
-    chunk_size=1000  # Start with 1000 for quick testing
-)
-```
-
-### Searching for Artwork
-
-To identify an artwork from an uploaded image:
-
-```python
-# Import Google Colab tools
-from google.colab import files
-
-# Function to identify artwork
-def identify_artwork():
-    # Load the system
-    index, embeddings, metadata = system_management.load_system(SAVE_DIR)
-    feature_extractor = feature_extraction.create_feature_extractor()
-    
-    # Upload an image
-    print("Upload an image of artwork to identify:")
-    uploaded = files.upload()
-    
-    # Get the filename (only expecting one image)
-    if not uploaded:
-        print("No image uploaded")
-        return
-        
-    filename = next(iter(uploaded.keys()))
-    print(f"Processing image: {filename}")
-    
-    # Process the query image
-    img_tensor = image_processing.process_image(filename)
-    query_vector = feature_extractor.extract_single_feature(img_tensor)
-    
-    # Search for matches
-    results = index_management.search_artwork(query_vector, index, metadata, k=5)
-    
-    # Display results
-    visualization.display_search_results(filename, results)
-
-# Run the identification function
-identify_artwork()
-```
-
-### Incremental Training
-
-To add more artworks to the system over time:
-
-```python
-# Run the incremental training demo
-incremental_training.run_incremental_demo(
-    dataframe=df,
-    save_dir=SAVE_DIR,
-    feature_extractor=feature_extractor,
-    chunk_size=1000  # Add another 1000 artworks
-)
-```
-
-## Tips for GPU Environments
-
-To maximize performance in GPU environments:
-
-1. **Enable GPU acceleration** in Google Colab:
-   - Go to Runtime → Change runtime type → GPU
-
-2. **Optimize batch size** based on available GPU memory:
-   - For high-end GPUs: `batch_size=64` or higher
-   - For limited memory: `batch_size=32` or lower
-
-3. **Use mixed precision** for faster computation:
-   - The feature extraction module automatically uses mixed precision on compatible GPUs
-
-4. **Process in manageable chunks**:
-   - For the full WikiArt dataset (215K images), use incremental training
-   - Process 1000-5000 images at a time to avoid memory issues
-
-5. **Save frequently**:
-   - The system saves progress after each chunk
-   - This allows you to continue from where you left off even if the session terminates
+3. Create a new code cell for each module, and paste the corresponding code
+4. Run the main function in a final cell
 
 ## Typical Workflow
 
+art-recognition provides a streamlined, prescribed workflow:
+
 1. **Initial Setup**:
-   - Install dependencies
-   - Mount Google Drive
-   - Import art-recognition modules
+   - Run the system for the first time
+   - Choose option 1 to add artworks to the database
+   - The system will create a database with the first 1000 artworks
 
-2. **First Training Run**:
-   - Load WikiArt dataset
-   - Train on first 1000 artworks
-   - Test the system with a few queries
+2. **Adding More Artworks**:
+   - Run the system again
+   - Choose option 1 to add more artworks
+   - The system will incrementally add another 1000 artworks
 
-3. **Incremental Growth**:
-   - Run the system again later
-   - Add another batch of artworks
-   - Repeat until you've processed as many artworks as desired
+3. **Identifying Artwork**:
+   - Run the system
+   - Choose option 2 to identify an artwork
+   - Upload an image
+   - View the matching results
 
-4. **Production Use**:
-   - Load the fully trained system
-   - Use it to identify artworks from photos
+4. **Starting Fresh**:
+   - If needed, choose option 3 to delete the system and start over
+
+## GPU Optimization
+
+The system automatically optimizes for GPU usage:
+
+- Detects if a GPU is available
+- Uses larger batch sizes on GPU (64 vs 32 on CPU)
+- Implements mixed precision where supported
+- Uses non-blocking data transfers to improve performance
+
+## Incremental Training
+
+For the full WikiArt dataset (215K images), incremental training is essential:
+
+- Processes artworks in manageable chunks of 1000
+- Tracks which artworks have been processed to avoid duplicates
+- Combines new embeddings with existing ones
+- Updates the search index to include all artworks
+
+This approach allows you to build a comprehensive database over time, even in resource-constrained environments.
 
 ## System Requirements
 
@@ -236,7 +233,7 @@ To maximize performance in GPU environments:
 
 2. **System loading errors**:
    - Check that all files exist in the save directory
-   - If corrupted, use `system_management.delete_system(SAVE_DIR)` and retrain
+   - If corrupted, use option 3 to delete the system and start fresh
 
 3. **Slow processing**:
    - Verify GPU is enabled
@@ -247,19 +244,6 @@ To maximize performance in GPU environments:
    - Try a clearer photo with better lighting
    - Ensure the artwork is clearly visible and not severely distorted
    - Add more artworks to the database for better coverage
-
-## Project Structure
-
-```
-art-recognition/
-├── data_handling.py        # Dataset loading and metadata extraction
-├── feature_extraction.py   # Neural network feature extraction
-├── index_management.py     # FAISS index operations
-├── system_management.py    # Save, load, delete system functions
-├── image_processing.py     # Image transformation and augmentation
-├── visualization.py        # Result visualization functions
-└── incremental_training.py # Incremental training functionality
-```
 
 ## Acknowledgments
 

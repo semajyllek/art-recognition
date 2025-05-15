@@ -1,29 +1,19 @@
 """
 Incremental training module for the ArtRecognition system.
 
-This module provides functionality for incrementally updating
-the recognition system with new artworks, avoiding duplicates
-and maintaining system performance over time.
+This module provides functionality for incrementally updating the
+system with new artworks, allowing the database to grow over time.
 """
 
 import numpy as np
 import pandas as pd
-import faiss
 import os
-import time
-from typing import List, Tuple, Dict, Any, Optional, Union, Set
+from typing import List, Tuple, Dict, Any, Optional, Set
 from tqdm import tqdm
 
 # Type aliases
 FeatureVectorType = np.ndarray
 MetadataType = Dict[str, Any]
-FeatureExtractorType = Any  # This would be the actual feature extractor type
-
-# These would normally be imported from other modules
-# For demonstration, we'll reference them by name
-# from feature_extraction import extract_features
-# from index_management import build_index, save_index
-# from system_management import save_system, load_system, system_exists
 
 
 def get_processed_urls(metadata: List[MetadataType]) -> Set[str]:
@@ -31,10 +21,10 @@ def get_processed_urls(metadata: List[MetadataType]) -> Set[str]:
     Get the set of URLs that have already been processed.
     
     Args:
-        metadata: List of metadata for all artworks
+        metadata: List of metadata for all processed artworks
         
     Returns:
-        Set of URLs
+        Set of processed URLs
     """
     urls = set()
     for item in metadata:
@@ -53,7 +43,7 @@ def filter_new_artworks(dataframe: pd.DataFrame, processed_urls: Set[str]) -> pd
         processed_urls: Set of URLs already processed
         
     Returns:
-        Filtered DataFrame
+        Filtered DataFrame with only new artworks
     """
     # Check if 'file_link' column exists
     if 'file_link' not in dataframe.columns:
@@ -68,29 +58,32 @@ def filter_new_artworks(dataframe: pd.DataFrame, processed_urls: Set[str]) -> pd
 
 def train_incrementally(dataframe: pd.DataFrame, 
                        save_dir: str,
-                       feature_extractor: FeatureExtractorType,
-                       chunk_size: int = 1000,
-                       batch_size: int = 32) -> Tuple[Optional[faiss.Index], Optional[List[MetadataType]]]:
+                       chunk_size: int = 1000) -> bool:
     """
     Incrementally update the artwork recognition system with new artworks.
+    
+    This function either:
+    1. Loads an existing system and adds new artworks, or
+    2. Creates a new system if none exists
     
     Args:
         dataframe: DataFrame with artwork data
         save_dir: Directory to save/load system files
-        feature_extractor: Feature extractor for processing new images
-        chunk_size: Number of new artworks to add
-        batch_size: Batch size for feature extraction
+        chunk_size: Number of new artworks to add at once
         
     Returns:
-        Tuple of (index, metadata) or (None, None) if failed
+        True if successful, False otherwise
     """
-    from feature_extraction import extract_features
+    # Import required functions
+    # These would normally be imported at the top, but are included
+    # here to show the dependencies clearly
+    from feature_extraction import create_feature_extractor, extract_features
     from index_management import build_index
     from system_management import save_system, load_system, system_exists
     
     print(f"Starting incremental training with up to {chunk_size} new artworks...")
     
-    # Check if existing system exists
+    # Check if an existing system exists
     if system_exists(save_dir):
         try:
             # Load existing system
@@ -104,10 +97,10 @@ def train_incrementally(dataframe: pd.DataFrame,
             # Filter dataframe to include only new artworks
             new_df = filter_new_artworks(dataframe, processed_urls)
             
-            # If no new artworks, just return the existing system
+            # If no new artworks, just return success
             if len(new_df) == 0:
                 print("No new artworks to add. System is up to date.")
-                return index, metadata
+                return True
             
             # Take a chunk of new artworks
             if len(new_df) > chunk_size:
@@ -116,9 +109,12 @@ def train_incrementally(dataframe: pd.DataFrame,
             else:
                 chunk_df = new_df
             
+            # Create feature extractor
+            feature_extractor = create_feature_extractor()
+            
             # Extract features for new artworks
             print(f"Extracting features for {len(chunk_df)} new artworks...")
-            new_embeddings, new_metadata = extract_features(chunk_df, feature_extractor, batch_size)
+            new_embeddings, new_metadata = extract_features(chunk_df, feature_extractor)
             
             # Combine with existing embeddings and metadata
             print("Combining with existing data...")
@@ -126,7 +122,6 @@ def train_incrementally(dataframe: pd.DataFrame,
             combined_metadata = metadata + new_metadata
             
             # Create a new index with combined data
-            # (Some index types like HNSW can't be updated, so we rebuild)
             print("Building new index with combined data...")
             combined_index = build_index(combined_embeddings)
             
@@ -144,10 +139,10 @@ def train_incrementally(dataframe: pd.DataFrame,
                 percent = (processed / total) * 100 if total > 0 else 0
                 print(f"Progress: {processed}/{total} artworks processed ({percent:.1f}%)")
                 
-                return combined_index, combined_metadata
+                return True
             else:
                 print("Failed to save updated system")
-                return index, metadata
+                return False
             
         except Exception as e:
             print(f"Error updating existing system: {e}")
@@ -164,9 +159,12 @@ def train_incrementally(dataframe: pd.DataFrame,
         else:
             chunk_df = dataframe
         
+        # Create feature extractor
+        feature_extractor = create_feature_extractor()
+        
         # Extract features
         print(f"Extracting features for {len(chunk_df)} artworks...")
-        embeddings, metadata = extract_features(chunk_df, feature_extractor, batch_size)
+        embeddings, metadata = extract_features(chunk_df, feature_extractor)
         
         # Build index
         print("Building search index...")
@@ -185,204 +183,50 @@ def train_incrementally(dataframe: pd.DataFrame,
             percent = (processed / total) * 100 if total > 0 else 0
             print(f"Progress: {processed}/{total} artworks processed ({percent:.1f}%)")
             
-            return index, metadata
+            return True
         else:
             print("Failed to save new system")
-            return None, None
+            return False
         
     except Exception as e:
         print(f"Error creating new system: {e}")
-        return None, None
+        return False
 
 
-def analyze_incremental_performance(embeddings: FeatureVectorType, 
-                                   metadata: List[MetadataType],
-                                   chunk_sizes: List[int] = [1000, 5000, 10000]) -> None:
-    """
-    Analyze how index performance scales with increasing dataset size.
-    
-    Args:
-        embeddings: Full set of embeddings
-        metadata: Full set of metadata
-        chunk_sizes: Different dataset sizes to test
-    """
-    from index_management import build_index
-    import matplotlib.pyplot as plt
-    
-    print("Analyzing incremental performance...")
-    
-    # Performance metrics
-    build_times = []
-    query_times = []
-    memory_usage = []
-    
-    # Test query
-    query_vector = embeddings[0].reshape(1, -1)  # Use first vector as test query
-    
-    # Test for different chunk sizes
-    for size in chunk_sizes:
-        if size > len(embeddings):
-            print(f"Skipping size {size} (larger than dataset)")
-            continue
-        
-        print(f"Testing with {size} artworks...")
-        
-        # Get chunk of embeddings
-        chunk_embeddings = embeddings[:size]
-        
-        # Measure build time
-        start_time = time.time()
-        index = build_index(chunk_embeddings)
-        build_time = time.time() - start_time
-        build_times.append(build_time)
-        
-        # Measure query time (average of 100 queries)
-        query_time_sum = 0
-        for _ in range(100):
-            start_time = time.time()
-            index.search(query_vector, 5)
-            query_time_sum += time.time() - start_time
-        query_times.append(query_time_sum / 100)
-        
-        # Memory usage (approximate based on embeddings size)
-        memory_mb = chunk_embeddings.nbytes / (1024 * 1024)
-        memory_usage.append(memory_mb)
-        
-        print(f"  Build time: {build_time:.3f}s")
-        print(f"  Query time: {(query_time_sum / 100) * 1000:.3f}ms")
-        print(f"  Memory: {memory_mb:.2f}MB")
-    
-    # Plot results
-    plt.figure(figsize=(15, 5))
-    
-    # Build time
-    plt.subplot(1, 3, 1)
-    plt.plot(chunk_sizes[:len(build_times)], build_times, 'o-', label='Build Time')
-    plt.xlabel('Number of Artworks')
-    plt.ylabel('Time (seconds)')
-    plt.title('Index Build Time')
-    plt.grid(alpha=0.3)
-    
-    # Query time
-    plt.subplot(1, 3, 2)
-    plt.plot(chunk_sizes[:len(query_times)], [t * 1000 for t in query_times], 'o-', label='Query Time')
-    plt.xlabel('Number of Artworks')
-    plt.ylabel('Time (milliseconds)')
-    plt.title('Query Time')
-    plt.grid(alpha=0.3)
-    
-    # Memory usage
-    plt.subplot(1, 3, 3)
-    plt.plot(chunk_sizes[:len(memory_usage)], memory_usage, 'o-', label='Memory Usage')
-    plt.xlabel('Number of Artworks')
-    plt.ylabel('Memory (MB)')
-    plt.title('Memory Usage')
-    plt.grid(alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-
-
-def estimate_full_dataset_resources(sample_embeddings: FeatureVectorType, 
-                                   total_artworks: int) -> Dict[str, float]:
-    """
-    Estimate resources needed for the full dataset based on a sample.
-    
-    Args:
-        sample_embeddings: Sample of embeddings
-        total_artworks: Total number of artworks in the full dataset
-        
-    Returns:
-        Dictionary with resource estimates
-    """
-    from index_management import build_index
-    
-    print(f"Estimating resources for {total_artworks} artworks based on sample of {len(sample_embeddings)}...")
-    
-    # Build index for sample
-    start_time = time.time()
-    index = build_index(sample_embeddings)
-    build_time = time.time() - start_time
-    
-    # Memory usage of sample
-    sample_memory_mb = sample_embeddings.nbytes / (1024 * 1024)
-    
-    # Scaling factor
-    scaling_factor = total_artworks / len(sample_embeddings)
-    
-    # Estimates (memory scales linearly, time might scale worse)
-    estimated_memory_mb = sample_memory_mb * scaling_factor
-    
-    # Time often scales superlinearly, use a conservative power law
-    time_scaling_power = 1.2  # Empirical factor (could be adjusted)
-    estimated_build_time = build_time * (scaling_factor ** time_scaling_power)
-    
-    # Prepare results
-    estimates = {
-        'sample_size': len(sample_embeddings),
-        'full_size': total_artworks,
-        'sample_build_time': build_time,
-        'estimated_build_time': estimated_build_time,
-        'sample_memory_mb': sample_memory_mb,
-        'estimated_memory_mb': estimated_memory_mb,
-        'estimated_memory_gb': estimated_memory_mb / 1024
-    }
-    
-    # Print summary
-    print(f"Sample build time: {build_time:.2f}s")
-    print(f"Estimated full dataset build time: {estimated_build_time:.2f}s ({estimated_build_time/60:.2f}min)")
-    print(f"Sample memory: {sample_memory_mb:.2f}MB")
-    print(f"Estimated full dataset memory: {estimated_memory_mb:.2f}MB ({estimated_memory_mb/1024:.2f}GB)")
-    
-    return estimates
-
-
-def run_incremental_demo(dataframe: pd.DataFrame, 
-                        save_dir: str,
-                        feature_extractor: FeatureExtractorType,
-                        chunk_size: int = 1000) -> None:
+def run_incremental_demo(dataframe: pd.DataFrame, save_dir: str) -> None:
     """
     Run the incremental training demo with user interaction.
+    
+    This function guides the user through the process of incrementally
+    adding artworks to the system.
     
     Args:
         dataframe: DataFrame with artwork data
         save_dir: Directory to save/load system files
-        feature_extractor: Feature extractor for processing new images
-        chunk_size: Number of new artworks to add per iteration
     """
-    from system_management import system_exists, get_system_info
+    from system_management import system_exists
     
     print("Starting Artwork Recognition System with Incremental Training...")
     
     # Check if a system exists
     if system_exists(save_dir):
-        system_info = get_system_info(save_dir)
-        current_size = system_info.get('num_artworks', 0)
-        
-        print(f"Found existing system with {current_size} artworks")
+        print("Found existing system.")
         add_more = input("Would you like to add more artworks? (y/n): ")
         
         if add_more.lower() == 'y':
-            # Add more artworks
-            index, metadata = train_incrementally(
-                dataframe=dataframe,
-                save_dir=save_dir,
-                feature_extractor=feature_extractor,
-                chunk_size=chunk_size
-            )
+            # Add more artworks with default chunk size (1000)
+            success = train_incrementally(dataframe, save_dir)
             
-            if index is not None:
+            if success:
                 print("System successfully updated")
                 
                 # Ask if user wants to add more
-                if len(metadata) < len(dataframe):
-                    another_round = input("Would you like to add another batch of artworks? (y/n): ")
-                    if another_round.lower() == 'y':
-                        run_incremental_demo(dataframe, save_dir, feature_extractor, chunk_size)
+                another_round = input("Would you like to add another batch of artworks? (y/n): ")
+                if another_round.lower() == 'y':
+                    run_incremental_demo(dataframe, save_dir)
             else:
                 print("Failed to update system")
         else:
-            # Just load the system
             print("Using existing system without changes")
     else:
         print("No existing system found.")
@@ -390,22 +234,40 @@ def run_incremental_demo(dataframe: pd.DataFrame,
         
         if create_new.lower() == 'y':
             # Create new system
-            index, metadata = train_incrementally(
-                dataframe=dataframe,
-                save_dir=save_dir,
-                feature_extractor=feature_extractor,
-                chunk_size=chunk_size
-            )
+            success = train_incrementally(dataframe, save_dir)
             
-            if index is not None:
+            if success:
                 print("New system successfully created")
                 
                 # Ask if user wants to add more
-                if len(metadata) < len(dataframe):
-                    another_round = input("Would you like to add another batch of artworks? (y/n): ")
-                    if another_round.lower() == 'y':
-                        run_incremental_demo(dataframe, save_dir, feature_extractor, chunk_size)
+                another_round = input("Would you like to add another batch of artworks? (y/n): ")
+                if another_round.lower() == 'y':
+                    run_incremental_demo(dataframe, save_dir)
             else:
                 print("Failed to create system")
         else:
             print("Exiting without creating a system")
+
+
+def add_more_artworks(dataframe: pd.DataFrame, save_dir: str) -> bool:
+    """
+    Add more artworks to the system without user interaction.
+    
+    This is a simpler interface for adding artworks without
+    the interactive prompts.
+    
+    Args:
+        dataframe: DataFrame with artwork data
+        save_dir: Directory to save/load system files
+        
+    Returns:
+        True if successful, False otherwise
+    """
+    from system_management import system_exists
+    
+    if not system_exists(save_dir):
+        print("No existing system found. Creating new system...")
+    else:
+        print("Updating existing system...")
+    
+    return train_incrementally(dataframe, save_dir)

@@ -1,35 +1,30 @@
 """
 Image processing module for the ArtRecognition system.
 
-This module provides functions for image loading, transformation,
-and augmentation to prepare images for feature extraction and
-improve recognition robustness.
+This module handles image loading, transformation, and processing
+operations needed for the artwork recognition system.
 """
 
 import torch
 from torchvision import transforms
-from torchvision.transforms import functional as F
-import numpy as np
-from PIL import Image, ImageOps, ImageEnhance
+from PIL import Image, ImageOps
 import requests
 from io import BytesIO
 import time
-import random
-from typing import List, Tuple, Dict, Any, Optional, Union, Callable
+from typing import Optional, Union, Tuple
 
-# Type aliases
+# Type alias for various image inputs
 ImageType = Union[str, bytes, Image.Image]
 
 
-# Standard transformation pipeline for artwork images
-def get_standard_transform() -> transforms.Compose:
+def get_transform() -> transforms.Compose:
     """
     Get the standard image transformation pipeline.
     
-    This transformation prepares images for the neural network:
-    1. Resize to 256x256 pixels
-    2. Center crop to 224x224 pixels (standard input size for many CNNs)
-    3. Convert to PyTorch tensor
+    The transformation pipeline includes:
+    1. Resize to 256x256 (preserving aspect ratio)
+    2. Center crop to 224x224 (standard input for ResNet)
+    3. Convert to tensor
     4. Normalize with ImageNet mean and std values
     
     Returns:
@@ -46,34 +41,6 @@ def get_standard_transform() -> transforms.Compose:
     ])
 
 
-def load_image_from_url(url: str, timeout: int = 10, 
-                      max_retries: int = 3, retry_delay: float = 1.0) -> Optional[Image.Image]:
-    """
-    Load an image from a URL with retry logic.
-    
-    Args:
-        url: URL to the image
-        timeout: Timeout for the request in seconds
-        max_retries: Maximum number of retry attempts
-        retry_delay: Delay between retries in seconds
-        
-    Returns:
-        PIL Image or None if loading fails
-    """
-    for attempt in range(max_retries):
-        try:
-            response = requests.get(url, timeout=timeout)
-            response.raise_for_status()  # Raise exception for HTTP errors
-            return Image.open(BytesIO(response.content)).convert('RGB')
-        except Exception as e:
-            if attempt < max_retries - 1:
-                print(f"Retry {attempt+1}/{max_retries} for URL: {url}")
-                time.sleep(retry_delay)
-            else:
-                print(f"Failed to load image from {url}: {e}")
-                return None
-
-
 def load_image(image_source: ImageType) -> Optional[Image.Image]:
     """
     Load an image from various sources.
@@ -85,246 +52,204 @@ def load_image(image_source: ImageType) -> Optional[Image.Image]:
         PIL Image or None if loading fails
     """
     try:
-        # URL
+        # Handle URL
         if isinstance(image_source, str) and image_source.startswith(('http://', 'https://')):
             return load_image_from_url(image_source)
         
-        # File path
+        # Handle file path
         elif isinstance(image_source, str):
             return Image.open(image_source).convert('RGB')
         
-        # Bytes
+        # Handle bytes
         elif isinstance(image_source, bytes):
             return Image.open(BytesIO(image_source)).convert('RGB')
         
-        # PIL Image
+        # Handle PIL Image
         elif isinstance(image_source, Image.Image):
             return image_source.convert('RGB')  # Ensure RGB mode
         
         else:
             print(f"Unsupported image source type: {type(image_source)}")
             return None
-    
+        
     except Exception as e:
         print(f"Error loading image: {e}")
         return None
+
+
+def load_image_from_url(url: str) -> Optional[Image.Image]:
+    """
+    Load an image from a URL with retry logic.
+    
+    Args:
+        url: URL to the image
+        
+    Returns:
+        PIL Image or None if loading fails
+    """
+    # Fixed settings
+    timeout = 10
+    max_retries = 3
+    retry_delay = 1.0
+    
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, timeout=timeout)
+            response.raise_for_status()  # Raise exception for HTTP errors
+            return Image.open(BytesIO(response.content)).convert('RGB')
+        except Exception as e:
+            if attempt < max_retries - 1:  # Don't sleep on the last attempt
+                print(f"Retry {attempt+1}/{max_retries} for URL: {url}")
+                time.sleep(retry_delay)
+            else:
+                print(f"Failed to load image from {url}: {e}")
+                return None
+    
+    return None  # Should not reach here, but just in case
 
 
 def process_image(image: ImageType) -> Optional[torch.Tensor]:
     """
     Process an image for feature extraction.
     
+    This function:
+    1. Loads the image from the given source
+    2. Applies the standard transformations
+    3. Returns a tensor ready for the neural network
+    
     Args:
         image: Image to process (URL, path, bytes, or PIL Image)
         
     Returns:
-        Processed image as a PyTorch tensor or None if processing fails
+        Processed image tensor or None if processing fails
     """
-    try:
-        # Load the image
-        img = load_image(image)
-        if img is None:
-            return None
-        
-        # Apply standard transformations
-        transform = get_standard_transform()
-        img_tensor = transform(img)
-        
-        return img_tensor
+    # Load the image
+    img = load_image(image)
+    if img is None:
+        return None
     
+    # Apply standard transformations
+    transform = get_transform()
+    try:
+        img_tensor = transform(img)
+        return img_tensor
     except Exception as e:
         print(f"Error processing image: {e}")
         return None
 
 
-def create_augmented_versions(image: Image.Image, num_versions: int = 5) -> List[Image.Image]:
+def create_blank_image(width: int = 224, height: int = 224) -> Image.Image:
     """
-    Create augmented versions of an image to improve recognition robustness.
-    
-    The augmentations simulate different viewing conditions:
-    - Slight rotations (as if photo is taken at an angle)
-    - Brightness/contrast variations (different lighting conditions)
-    - Slight crops (different framing of the artwork)
-    - Perspective changes (different viewing angles)
+    Create a blank black image.
     
     Args:
-        image: Original image
-        num_versions: Number of augmented versions to create
+        width: Image width
+        height: Image height
         
     Returns:
-        List of augmented images including the original
+        Blank PIL Image
     """
-    results = [image]  # Include original image
-    
-    # Create multiple variations
-    for _ in range(num_versions - 1):
-        # Start with a copy of the original
-        img_copy = image.copy()
-        
-        # Apply a random sequence of transformations
-        
-        # 1. Random rotation (-15 to 15 degrees)
-        if random.random() > 0.5:
-            angle = random.uniform(-15, 15)
-            img_copy = img_copy.rotate(angle, resample=Image.BICUBIC, expand=False)
-        
-        # 2. Random brightness adjustment (0.8 to 1.2)
-        if random.random() > 0.5:
-            brightness_factor = random.uniform(0.8, 1.2)
-            img_copy = ImageEnhance.Brightness(img_copy).enhance(brightness_factor)
-        
-        # 3. Random contrast adjustment (0.8 to 1.2)
-        if random.random() > 0.5:
-            contrast_factor = random.uniform(0.8, 1.2)
-            img_copy = ImageEnhance.Contrast(img_copy).enhance(contrast_factor)
-        
-        # 4. Random crop and resize
-        if random.random() > 0.5:
-            width, height = img_copy.size
-            # Crop 80-95% of the image
-            crop_percent = random.uniform(0.8, 0.95)
-            left = random.uniform(0, 1 - crop_percent) * width
-            top = random.uniform(0, 1 - crop_percent) * height
-            right = left + crop_percent * width
-            bottom = top + crop_percent * height
-            
-            img_copy = img_copy.crop((left, top, right, bottom))
-            img_copy = img_copy.resize((width, height), Image.BICUBIC)
-        
-        # 5. Small perspective transform
-        if random.random() > 0.5:
-            width, height = img_copy.size
-            
-            # Define perspective transform
-            # Slightly move the corners to simulate change in viewing angle
-            max_shift = 0.05  # Max shift as proportion of width/height
-            
-            # Calculate random shifts for corners
-            shifts = [
-                random.uniform(-max_shift, max_shift) * width,  # Top left x
-                random.uniform(-max_shift, max_shift) * height, # Top left y
-                random.uniform(-max_shift, max_shift) * width,  # Top right x
-                random.uniform(-max_shift, max_shift) * height, # Top right y
-                random.uniform(-max_shift, max_shift) * width,  # Bottom right x
-                random.uniform(-max_shift, max_shift) * height, # Bottom right y
-                random.uniform(-max_shift, max_shift) * width,  # Bottom left x
-                random.uniform(-max_shift, max_shift) * height  # Bottom left y
-            ]
-            
-            # Original coordinates of the corners
-            coords = [
-                0, 0,                  # Top left
-                width, 0,              # Top right
-                width, height,         # Bottom right
-                0, height              # Bottom left
-            ]
-            
-            # Apply shifts
-            coeffs = []
-            for i in range(4):
-                coeffs.extend([
-                    coords[i*2] + shifts[i*2], 
-                    coords[i*2+1] + shifts[i*2+1]
-                ])
-            
-            # Apply perspective transform
-            try:
-                img_copy = img_copy.transform(
-                    (width, height), 
-                    Image.PERSPECTIVE, 
-                    coeffs, 
-                    Image.BICUBIC
-                )
-            except Exception:
-                # Fall back to affine transform if perspective fails
-                img_copy = img_copy
-        
-        # Add the augmented image to results
-        results.append(img_copy)
-    
-    return results
+    return Image.new('RGB', (width, height), color=(0, 0, 0))
 
 
-def preprocess_batch(images: List[ImageType]) -> torch.Tensor:
+def resize_for_display(image: ImageType, max_size: int = 800) -> Optional[Image.Image]:
     """
-    Process a batch of images for feature extraction.
+    Resize an image for display purposes, preserving aspect ratio.
     
     Args:
-        images: List of images to process
+        image: Image to resize
+        max_size: Maximum size (width or height)
         
     Returns:
-        Batch of processed images as a PyTorch tensor
-    """
-    # Load and process each image
-    processed_images = []
-    transform = get_standard_transform()
-    
-    for image in images:
-        img = load_image(image)
-        if img is not None:
-            # Apply transformations
-            try:
-                img_tensor = transform(img)
-                processed_images.append(img_tensor)
-            except Exception as e:
-                print(f"Error processing image: {e}")
-    
-    # Stack into a batch
-    if processed_images:
-        return torch.stack(processed_images)
-    else:
-        return torch.zeros((0, 3, 224, 224))  # Empty batch
-
-
-def prepare_query_image(image: ImageType) -> Tuple[torch.Tensor, Optional[Image.Image]]:
-    """
-    Prepare a query image for searching.
-    
-    Args:
-        image: Image to prepare (URL, path, bytes, or PIL Image)
-        
-    Returns:
-        Tuple of (processed tensor, original PIL Image)
-    """
-    # Load the image
-    img = load_image(image)
-    if img is None:
-        # Return empty tensor and None
-        return torch.zeros((1, 3, 224, 224)), None
-    
-    # Process for the network
-    transform = get_standard_transform()
-    img_tensor = transform(img).unsqueeze(0)  # Add batch dimension
-    
-    return img_tensor, img
-
-
-def process_image_for_display(image: ImageType, max_size: int = 800) -> Optional[Image.Image]:
-    """
-    Process an image for display purposes.
-    
-    Args:
-        image: Image to process
-        max_size: Maximum size for either dimension
-        
-    Returns:
-        Processed PIL Image or None if processing fails
+        Resized PIL Image or None if processing fails
     """
     # Load the image
     img = load_image(image)
     if img is None:
         return None
     
-    # Resize if necessary, maintaining aspect ratio
+    # Get original size
     width, height = img.size
-    if width > max_size or height > max_size:
-        if width >= height:
-            new_width = max_size
-            new_height = int(height * (max_size / width))
-        else:
-            new_height = max_size
-            new_width = int(width * (max_size / height))
-        
-        img = img.resize((new_width, new_height), Image.BICUBIC)
     
-    return img
+    # Check if resizing is needed
+    if width <= max_size and height <= max_size:
+        return img
+    
+    # Calculate new size
+    if width > height:
+        new_width = max_size
+        new_height = int(height * (max_size / width))
+    else:
+        new_height = max_size
+        new_width = int(width * (max_size / height))
+    
+    # Resize
+    try:
+        return img.resize((new_width, new_height), Image.BILINEAR)
+    except Exception as e:
+        print(f"Error resizing image: {e}")
+        return None
+
+
+def crop_center(image: ImageType, crop_width: int = 224, crop_height: int = 224) -> Optional[Image.Image]:
+    """
+    Crop the center region of an image.
+    
+    Args:
+        image: Image to crop
+        crop_width: Width of the crop
+        crop_height: Height of the crop
+        
+    Returns:
+        Cropped PIL Image or None if processing fails
+    """
+    # Load the image
+    img = load_image(image)
+    if img is None:
+        return None
+    
+    # Get dimensions
+    width, height = img.size
+    
+    # Calculate crop coordinates
+    left = (width - crop_width) // 2
+    top = (height - crop_height) // 2
+    right = left + crop_width
+    bottom = top + crop_height
+    
+    # Crop
+    try:
+        return img.crop((left, top, right, bottom))
+    except Exception as e:
+        print(f"Error cropping image: {e}")
+        return None
+
+
+def process_query_image(image: ImageType) -> Tuple[Optional[torch.Tensor], Optional[Image.Image]]:
+    """
+    Process a query image for artwork recognition.
+    
+    This function:
+    1. Loads the image
+    2. Creates a processed tensor for the neural network
+    3. Returns both the tensor and the original image for display
+    
+    Args:
+        image: Image to process
+        
+    Returns:
+        Tuple of (processed tensor, original image) or (None, None) if processing fails
+    """
+    # Load the image
+    img = load_image(image)
+    if img is None:
+        return None, None
+    
+    # Process for the neural network
+    try:
+        transform = get_transform()
+        img_tensor = transform(img)
+        return img_tensor, img
+    except Exception as e:
+        print(f"Error processing query image: {e}")
+        return None, img  # Return original image even if processing fails

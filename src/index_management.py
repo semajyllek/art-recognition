@@ -1,27 +1,29 @@
 """
 Index management module for the ArtRecognition system.
 
-This module contains functions for creating and searching FAISS indexes
-specifically optimized for the WikiArt dataset with ~215K images.
+This module handles the creation and searching of FAISS indexes for artwork embeddings.
+It uses the HNSW index which is optimized for the WikiArt dataset (~215K images).
 """
 
 import numpy as np
 import faiss
 import os
 import time
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any
 
 # Type aliases
 FeatureVectorType = np.ndarray
 MetadataType = Dict[str, Any]
 SearchResultType = Dict[str, Any]
 
+
 def build_index(features: FeatureVectorType) -> faiss.Index:
     """
-    Build a FAISS index optimized for our specific use case (~215K artwork images).
+    Build a HNSW index for the artwork embeddings.
     
-    For a dataset of this size, we use an HNSW index which offers an excellent
-    balance of search speed and accuracy.
+    This function creates a Hierarchical Navigable Small World (HNSW) index,
+    which offers an excellent balance of search speed and accuracy for the
+    WikiArt dataset size (~215K images).
     
     Args:
         features: Feature vectors of shape (n_samples, dimension)
@@ -33,9 +35,10 @@ def build_index(features: FeatureVectorType) -> faiss.Index:
     num_vectors, dimension = features.shape
     print(f"Building index for {num_vectors} vectors of dimension {dimension}")
     
-    # For ~215K images, HNSW is an excellent choice
-    m = 32  # Number of connections per node (higher = more accurate but slower to build)
-    ef_construction = 200  # Size of the dynamic candidate list during construction
+    # For WikiArt dataset, HNSW is an excellent choice
+    # These settings are optimized for ~215K images
+    m = 32  # Number of connections per node
+    ef_construction = 200  # Dynamic candidate list size during construction
     
     # Create HNSW index
     index = faiss.IndexHNSWFlat(dimension, m, faiss.METRIC_L2)
@@ -45,10 +48,11 @@ def build_index(features: FeatureVectorType) -> faiss.Index:
     # Add vectors to the index
     start_time = time.time()
     index.add(features)
-    elapsed = time.time() - start_time
+    build_time = time.time() - start_time
     
-    print(f"Index built in {elapsed:.2f} seconds with {index.ntotal} vectors")
+    print(f"Index built in {build_time:.2f} seconds with {index.ntotal} vectors")
     return index
+
 
 def search(index: faiss.Index, query: FeatureVectorType, k: int = 5) -> Tuple[np.ndarray, np.ndarray]:
     """
@@ -56,13 +60,13 @@ def search(index: faiss.Index, query: FeatureVectorType, k: int = 5) -> Tuple[np
     
     Args:
         index: FAISS index
-        query: Query vector(s) of shape (n_queries, dimension)
-        k: Number of results to return per query
+        query: Query vector of shape (dimension) or (1, dimension)
+        k: Number of results to return
         
     Returns:
         Tuple of (distances, indices) arrays
     """
-    # Ensure query has the right shape
+    # Ensure query has the right shape (1, dimension)
     if len(query.shape) == 1:
         query = query.reshape(1, -1)
     
@@ -70,34 +74,44 @@ def search(index: faiss.Index, query: FeatureVectorType, k: int = 5) -> Tuple[np
     distances, indices = index.search(query, k)
     return distances, indices
 
-def format_search_results(distances: np.ndarray, indices: np.ndarray, 
-                          metadata_list: List[MetadataType]) -> List[SearchResultType]:
+
+def search_artwork(query_vector: FeatureVectorType, 
+                  index: faiss.Index, 
+                  metadata: List[MetadataType], 
+                  k: int = 5) -> List[SearchResultType]:
     """
-    Format search results with metadata.
+    Search for similar artworks and format the results.
     
     Args:
-        distances: Array of distances from search
-        indices: Array of indices from search
-        metadata_list: List of metadata for all artworks
+        query_vector: Query feature vector
+        index: FAISS index
+        metadata: List of metadata for all artworks
+        k: Number of results to return
         
     Returns:
         List of search results with metadata and similarity scores
     """
-    results = []
+    # Search the index
+    distances, indices = search(index, query_vector, k)
     
-    # We only handle a single query at a time
+    # Format results
+    results = []
     for i, idx in enumerate(indices[0]):
-        if idx >= 0 and idx < len(metadata_list):  # Check valid index
-            # Calculate similarity score (0-100%)
-            similarity = 100.0 * (1.0 - distances[0][i] / (distances[0][i] + 10.0))
+        if idx < 0 or idx >= len(metadata):
+            # Invalid index, skip
+            continue
             
-            results.append({
-                'distance': float(distances[0][i]),
-                'similarity': float(similarity),
-                'metadata': metadata_list[idx]
-            })
+        # Convert distance to similarity score (0-100%)
+        similarity = 100.0 * (1.0 - distances[0][i] / (distances[0][i] + 10.0))
+        
+        results.append({
+            'distance': float(distances[0][i]),
+            'similarity': float(similarity),
+            'metadata': metadata[idx]
+        })
     
     return results
+
 
 def save_index(index: faiss.Index, filepath: str) -> None:
     """
@@ -107,15 +121,13 @@ def save_index(index: faiss.Index, filepath: str) -> None:
         index: FAISS index
         filepath: Path to save the index
     """
-    try:
-        # Create directory if needed
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
-        # Save the index
-        faiss.write_index(index, filepath)
-        print(f"Index saved to {filepath}")
-    except Exception as e:
-        print(f"Error saving index: {e}")
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    # Save the index
+    faiss.write_index(index, filepath)
+    print(f"Index saved to {filepath}")
+
 
 def load_index(filepath: str) -> faiss.Index:
     """
@@ -126,60 +138,60 @@ def load_index(filepath: str) -> faiss.Index:
         
     Returns:
         Loaded FAISS index
-        
-    Raises:
-        FileNotFoundError: If index file doesn't exist
     """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Index file not found: {filepath}")
     
-    try:
-        # Load the index
-        index = faiss.read_index(filepath)
-        print(f"Loaded index with {index.ntotal} vectors of dimension {index.d}")
-        return index
-    except Exception as e:
-        raise RuntimeError(f"Error loading index: {e}")
+    # Load the index
+    index = faiss.read_index(filepath)
+    print(f"Loaded index with {index.ntotal} vectors of dimension {index.d}")
+    return index
 
-def merge_with_existing_index(existing_index: faiss.Index, new_features: FeatureVectorType) -> faiss.Index:
+
+def get_index_info(index: faiss.Index) -> Dict[str, Any]:
     """
-    Merge new features with an existing index.
-    
-    This function is useful for incremental training.
+    Get information about a FAISS index.
     
     Args:
-        existing_index: Existing FAISS index
-        new_features: New feature vectors to add
+        index: FAISS index
         
     Returns:
-        New index with all vectors
+        Dictionary with index information
     """
-    # Get index properties
-    dimension = existing_index.d
+    info = {
+        'num_vectors': index.ntotal,
+        'dimension': index.d,
+        'index_type': 'HNSW',
+        'memory_usage_mb': estimate_memory_usage(index) / (1024 * 1024)
+    }
     
-    # For HNSW index, we need to create a new one and add all vectors
-    # Create a new index with the same parameters
-    m = 32  # Same as in build_index
-    index = faiss.IndexHNSWFlat(dimension, m, faiss.METRIC_L2)
-    index.hnsw.efConstruction = 200
-    index.hnsw.efSearch = 64
+    # Get HNSW-specific parameters if available
+    if hasattr(index, 'hnsw'):
+        info['connections_per_node'] = index.hnsw.M
+        info['ef_search'] = index.hnsw.efSearch
+        info['ef_construction'] = index.hnsw.efConstruction
     
-    # Add existing vectors (need to reconstruct them)
-    existing_count = existing_index.ntotal
-    print(f"Extracting {existing_count} existing vectors...")
+    return info
+
+
+def estimate_memory_usage(index: faiss.Index) -> int:
+    """
+    Estimate memory usage of the index in bytes.
     
-    # Extract in batches to avoid memory issues
-    batch_size = 10000
-    for start_idx in range(0, existing_count, batch_size):
-        end_idx = min(start_idx + batch_size, existing_count)
-        batch_vectors = np.vstack([
-            existing_index.reconstruct(i) for i in range(start_idx, end_idx)
-        ])
-        index.add(batch_vectors)
+    Args:
+        index: FAISS index
+        
+    Returns:
+        Estimated memory usage in bytes
+    """
+    # Basic estimate: vectors + index overhead
+    vector_size = index.ntotal * index.d * 4  # 4 bytes per float32
     
-    # Add new vectors
-    print(f"Adding {len(new_features)} new vectors...")
-    index.add(new_features)
-    
-    print(f"Merged index created with {index.ntotal} vectors")
-    return index
+    # HNSW overhead (approximate)
+    if hasattr(index, 'hnsw'):
+        # Each node has connections to other nodes
+        connections_overhead = index.ntotal * index.hnsw.M * 8  # 8 bytes per connection (4 for index, 4 for distance)
+        return vector_size + connections_overhead
+    else:
+        # Simple flat index
+        return vector_size
