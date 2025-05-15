@@ -6,6 +6,7 @@ using a pre-trained ResNet50 neural network. It provides a streamlined
 approach with fixed settings optimized for artwork recognition.
 """
 
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -134,17 +135,19 @@ class FeatureExtractor:
         return features.squeeze().cpu().numpy()
 
 
-def extract_features(dataframe: pd.DataFrame) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
+def extract_features(dataframe: pd.DataFrame, extractor=None) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
     """
     Extract features from all images in the DataFrame.
     
     Args:
         dataframe: DataFrame containing artwork data
+        extractor: Optional feature extractor (created if None)
         
     Returns:
         Tuple containing (features array, metadata list)
     """
-    extractor = create_feature_extractor()
+    if extractor is None:
+        extractor = create_feature_extractor()
     return extractor.extract_features(dataframe)
 
 
