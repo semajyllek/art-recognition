@@ -6,6 +6,7 @@ art-recognition is a Python-based system that can identify artwork from photogra
 
 The system creates "embeddings" (numerical representations) of artwork images using a pre-trained neural network. These embeddings capture the visual essence of each artwork, allowing for similarity matching with new query images. The system is designed to work with large datasets of artwork images and to be run in GPU environments like Google Colab.
 
+
 ## Key Features
 
 - Identify artworks from photographs with different lighting, angles, and sizes
@@ -21,7 +22,7 @@ The system creates "embeddings" (numerical representations) of artwork images us
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/art-recognition.git
+git clone https://github.com/semajyllek/art-recognition.git
 cd art-recognition
 
 # Create and activate a virtual environment (optional but recommended)
@@ -42,7 +43,7 @@ pip install art-recognition
 
 ```python
 # Install from GitHub
-!pip install git+https://github.com/yourusername/art-recognition.git
+!pip install git+https://github.com/semajyllek/art-recognition.git
 
 # Or install required packages manually
 !pip install -q datasets faiss-cpu torch torchvision tqdm matplotlib pillow requests pandas
