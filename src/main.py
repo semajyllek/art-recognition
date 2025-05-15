@@ -1,7 +1,13 @@
-def run_artwork_recognition(save_dir='/content/drive/MyDrive/artwork_recognition'):
+
+
+def run_artwork_recognition(save_dir='/content/drive/MyDrive/artwork_recognition', custom_chunk_size=None):
     """
-    Main function to run the artwork recognition system.
+    Main function to run the artwork recognition system with a custom chunk size.
     Handles the entire workflow in a prescribed manner.
+    
+    Args:
+        save_dir: Directory to save/load system files
+        custom_chunk_size: Optional custom chunk size (default is 1000 if None)
     """
     # Import required modules
     import os
@@ -35,11 +41,15 @@ def run_artwork_recognition(save_dir='/content/drive/MyDrive/artwork_recognition
         # Add more artworks
         print("\nAdding artworks to the database...")
         
+        # Get the chunk size to use
+        chunk_size = custom_chunk_size if custom_chunk_size is not None else 1000
+        print(f"Using chunk size: {chunk_size}")
+        
         # Load dataset
         df = data_handling.load_artwork_dataset()
         
-        # Add artworks incrementally
-        incremental_training.add_more_artworks(df, save_dir)
+        # Modify the train_incrementally call to use the custom chunk size
+        incremental_training.train_incrementally(df, save_dir, chunk_size=chunk_size)
         
     elif choice == '2':
         # Identify artwork
@@ -87,12 +97,8 @@ def run_artwork_recognition(save_dir='/content/drive/MyDrive/artwork_recognition
             print("System deleted. Run again to create a new one.")
         else:
             print("Deletion cancelled.")
-        
-    else:
-        print("Invalid choice. Please enter 1, 2, or 3.")
-    
-    print("\nOperation completed. Run this function again to perform another action.")
+            
 
-
+			
 if __name__ == "__main__":
     run_artwork_recognition()
