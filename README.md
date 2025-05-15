@@ -4,9 +4,7 @@ art-recognition is a Python-based system that can identify artwork from photogra
 
 ## Overview
 
-The system creates "embeddings" (numerical representations) of artwork images using a pre-trained neural network. These embeddings capture the visual essence of each artwork, allowing for similarity matching with new query images. The system is designed to work with the WikiArt dataset (215,000+ images) and to be run in GPU environments like Google Colab.
-
-![System Overview](https://i.imgur.com/0NJA8A9.png)
+The system creates "embeddings" (numerical representations) of artwork images using a pre-trained neural network. These embeddings capture the visual essence of each artwork, allowing for similarity matching with new query images. The system is designed to work with large datasets of artwork images and to be run in GPU environments like Google Colab.
 
 ## Key Features
 
@@ -14,14 +12,47 @@ The system creates "embeddings" (numerical representations) of artwork images us
 - Incremental training - build your database over time, 1000 examples at a time
 - GPU-accelerated processing for faster feature extraction
 - HNSW indexing for efficient similarity search even with large datasets
-- Works with the WikiArt dataset (215,000+ artworks)
+- Works with the art dataset (215,000+ artworks) from Hugging Face
 - Persistent storage in Google Drive for reuse across sessions
+
+## Installation Instructions
+
+### Option 1: Install from GitHub
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/art-recognition.git
+cd art-recognition
+
+# Create and activate a virtual environment (optional but recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Option 2: Install using pip (if published)
+
+```bash
+pip install art-recognition
+```
+
+### Option 3: For Google Colab
+
+```python
+# Install from GitHub
+!pip install git+https://github.com/yourusername/art-recognition.git
+
+# Or install required packages manually
+!pip install -q datasets faiss-cpu torch torchvision tqdm matplotlib pillow requests pandas
+```
 
 ## System Architecture
 
 The system is organized into several focused modules, each handling a specific aspect:
 
-1. **data_handling.py**: Loads and processes the WikiArt dataset, extracting metadata
+1. **data_handling.py**: Loads and processes the artwork dataset, extracting metadata
 2. **dataset.py**: Handles loading and preprocessing of artwork images
 3. **feature_extraction.py**: Extracts visual features from images using neural networks
 4. **index_management.py**: Creates and manages FAISS indexes for similarity search
@@ -34,7 +65,7 @@ The system is organized into several focused modules, each handling a specific a
 
 Here's how the system works:
 
-1. **Data Loading**: The WikiArt dataset is loaded and parsed to extract artwork metadata
+1. **Data Loading**: The art dataset is loaded and parsed to extract artwork metadata
 2. **Feature Extraction**:
    - Each artwork image is processed through a series of transformations (resize, crop, normalize)
    - A pre-trained ResNet50 neural network extracts a 2048-dimensional feature vector
@@ -164,7 +195,7 @@ run_artwork_recognition()
 
 ```python
 # Install required packages
-!pip install -q datasets faiss-cpu torch torchvision tqdm matplotlib pillow requests
+!pip install -q datasets faiss-cpu torch torchvision tqdm matplotlib pillow requests pandas
 ```
 
 3. Create a new code cell for each module, and paste the corresponding code
@@ -204,7 +235,7 @@ The system automatically optimizes for GPU usage:
 
 ## Incremental Training
 
-For the full WikiArt dataset (215K images), incremental training is essential:
+For the full art dataset (215K images), incremental training is essential:
 
 - Processes artworks in manageable chunks of 1000
 - Tracks which artworks have been processed to avoid duplicates
@@ -247,11 +278,11 @@ This approach allows you to build a comprehensive database over time, even in re
 
 ## Acknowledgments
 
-- [WikiArt](https://www.wikiart.org/) for the artwork dataset
+- [Hugging Face](https://huggingface.co/) for hosting the artwork dataset
 - [PyTorch](https://pytorch.org/) for the deep learning framework
 - [FAISS](https://github.com/facebookresearch/faiss) for efficient similarity search
 - [torchvision](https://pytorch.org/vision/stable/index.html) for pre-trained models and image transformations
 
 ---
 
-This system lets you build a powerful artwork recognition engine that can identify artworks from photographs. By using incremental training, you can scale it to handle the full WikiArt dataset of 215,000+ images even in resource-constrained environments.
+This system lets you build a powerful artwork recognition engine that can identify artworks from photographs. By using incremental training, you can scale it to handle the full dataset of 215,000+ images even in resource-constrained environments.
